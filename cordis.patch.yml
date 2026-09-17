@@ -1,0 +1,11 @@
+# dsh-web-fetch-proxy - bundle patch: 把本插件插入 profile 的插件清单。
+#
+# lib/index.js 在宿主进程内调用 @deepseek-ai/dsh-http-proxy 的
+# installProxyFromEnvironment()，为 web_fetch 装上一条 proxied 路由，
+# 从而跳过 web-fetch-http 的本地 DNS 校验（TUN fake-ip 场景）。
+#
+# 安装：dsh plugin --profile web add link:<path-to-this-package>
+# 可选配置见 README（config.proxy / config.noProxy / config.retryMs）。
+- insert:
+    - id: web-fetch-proxy
+      name: dsh-web-fetch-proxy
