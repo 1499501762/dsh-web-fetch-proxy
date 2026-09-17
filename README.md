@@ -193,10 +193,25 @@ set DSH_WEB_FETCH_PROXY=http://127.0.0.1:7897
 `dsh-network-proxy` 管的是**全局 undici Dispatcher**（跟随系统 / 手动 / 直连），它能让普通 `fetch` 走代理，
 但它没有触及 `@deepseek-ai/dsh-http-proxy` 的策略，所以 `web_fetch` 不受其影响。
 
-两个插件可以并存：
+**两者不冲突。** 把两个插件装进同一个进程实测的结果：
 
-- `web_fetch` 永远使用本插件安装的那条路由（`dsh-http-proxy` 持有自己的 dispatcher，不受 `setGlobalDispatcher` 改动影响）；
-- 其余 `fetch` 请求按最后安装的全局 Dispatcher 走；两者都指向代理，方向一致。
+| 场景 | `proxyRouteFor()` | `web_fetch` |
+| --- | --- | --- |
+| 只装 `dsh-network-proxy`（直连模式） | DIRECT | 失败 `WEB_BLOCKED_URL` |
+| 再挂上本插件 | PROXIED `127.0.0.1:7897` | 200 |
+| `dsh-network-proxy` 经 settings 切到「手动」 | PROXIED | 200 |
+| `dsh-network-proxy` 切到「直连」（清空 `HTTP(S)_PROXY`） | PROXIED | 200 |
+| 连续来回切换三次 | PROXIED | 每次都是 200 |
+
+要点：
+
+- `web_fetch` 只认 `dsh-http-proxy` 自己持有的策略与 dispatcher，别的插件 `setGlobalDispatcher()` 改不动它
+  ——实测 `dsh-network-proxy` 把 `HTTPS_PROXY` 清空后，`web_fetch` 照样走隧道；
+- 两者确实共用 **undici 全局 Dispatcher**（后写者赢），但这只影响普通 `fetch()`（模型 API、其它插件），不影响 `web_fetch`；
+- 两者都只关闭自己创建的 dispatcher，所以反复切换模式不会把对方弄坏；
+- 唯一会让人困惑的是：`dsh-network-proxy` 的「直连 / 手动 / 跟随系统」**不管辖 `web_fetch`**。
+  若把它设为「直连」，普通请求直连而 `web_fetch` 仍走代理，界面上会显得不一致。要让两条路径一致，
+  就把它们指向同一个代理，或在本插件的 `config.proxy` 里写死同一个地址。
 
 ## 安全性
 

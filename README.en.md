@@ -88,6 +88,25 @@ With `proxy: auto`, the first candidate that accepts a TCP connection wins:
 4. the Windows WinINET system proxy (`HKCU\...\Internet Settings`)
 5. a TCP probe of well-known ports: 7897, 7890, 7891, 7899, 10809, 10808, 1080, 2080, 20171, 8889
 
+## Coexistence with dsh-network-proxy
+
+They do not conflict. Measured with both plugins mounted in one process:
+
+| Situation | `proxyRouteFor()` | `web_fetch` |
+| --- | --- | --- |
+| only `dsh-network-proxy` (direct mode) | DIRECT | fails with `WEB_BLOCKED_URL` |
+| plus this plugin | PROXIED `127.0.0.1:7897` | 200 |
+| `dsh-network-proxy` switched to manual via its settings watcher | PROXIED | 200 |
+| `dsh-network-proxy` switched to direct (clears `HTTP(S)_PROXY`) | PROXIED | 200 |
+| three mode flips in a row | PROXIED | 200 every time |
+
+- `web_fetch` only consults the policy and dispatcher held by `dsh-http-proxy`; `setGlobalDispatcher()`
+  from another plugin cannot take it away.
+- Both share the undici global dispatcher (last writer wins), which affects plain `fetch()` only.
+- Neither closes a dispatcher it did not create, so repeated mode changes are safe.
+- The only oddity: the `direct` / `manual` / `system` setting of `dsh-network-proxy` does not govern
+  `web_fetch`. Point both at the same proxy to keep them consistent.
+
 ## Safety
 
 - Fail-open: no throw during module evaluation, none from `apply()`, and no route is installed unless
