@@ -143,9 +143,33 @@ dsh plugin --profile web add github:1499501762/dsh-web-fetch-proxy
 >       name: dsh-web-fetch-proxy
 > ```
 
-## 配置
+## 配置页面
 
-全部字段可选，写在 `cordis.patch.yml` 的 `config` 里：
+重启 DSH 后，**设置 → 常规** 里会出现「Web Fetch 代理」一栏：
+
+| 控件 | 作用 |
+| --- | --- |
+| 自动检测 / 手动代理 / 关闭 | 写 `web-fetch-proxy` settings 命名空间的 `proxy` 字段，**立即生效**，无需重启 |
+| 代理地址输入框 | 手动模式下填 `http://127.0.0.1:7897` 或 `127.0.0.1:7897`；主机端会校验，非法地址在保存前就被拒绝 |
+| 绕过列表 | 追加 `noProxy` 条目；`localhost`、`127.0.0.1`、`::1` 由 dsh-http-proxy 强制绕过 |
+| 状态行 / 重新检测 | 读宿主实时状态（当前路由、来源、失败原因），并可按需重新探测一次 |
+
+状态行显示的是宿主真正生效的结果，例如：
+
+```
+已生效  http://127.0.0.1:7897  (via: clash-config:C:\Users\...\config.yaml)
+```
+
+页面读的是一个带围栏的只读接口 `POST /web-fetch-proxy/api`（仅接受 loopback / 受信 Host、同源请求）：
+请求体 `{"action":"status"}` 取状态，`{"action":"redetect"}` 触发一次重新探测。
+
+> 页面不需要「重启后生效」：设置走的是 `applies: live` 的 settings 命名空间，改动通过
+> `scope.watch()` 直接驱动路由重建（旧的策略先释放，再按新配置重新探测安装）。
+
+## 配置（cordis 层）
+
+页面写的是同一份配置；`cordis.patch.yml` 的 `config` 提供**部署级基线与默认值**（settings 的 base 层），
+页面上没有暴露的字段只能在这里改：
 
 ```yaml
 - insert:
@@ -162,9 +186,9 @@ dsh plugin --profile web add github:1499501762/dsh-web-fetch-proxy
 
 | 字段 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| `enabled` | boolean | `true` | `false` 时插件不安装任何路由 |
-| `proxy` | string | `auto` | `auto` 自动发现；`off`/`none`/`direct` 不安装；也可以直接写死代理地址 |
-| `noProxy` | string | `""` | 追加到绕过列表（`localhost`、`127.0.0.1`、`::1` 由 dsh-http-proxy 强制绕过） |
+| `enabled` | boolean | `true` | 部署级总开关；`false` 时插件不安装任何路由（页面无法覆盖） |
+| `proxy` | string | `auto` | `auto` 自动发现；`off`/`none`/`direct` 不安装；也可以写死代理地址。**页面可改** |
+| `noProxy` | string | `""` | 追加到绕过列表（`localhost`、`127.0.0.1`、`::1` 由 dsh-http-proxy 强制绕过）。**页面可改** |
 | `retryMs` | number | `15000` | 代理客户端比 DSH 晚启动时，按此间隔重试 |
 | `maxRetries` | number | `20` | 重试上限（约 5 分钟） |
 | `probeTimeoutMs` | number | `400` | 候选代理的 TCP 连接超时 |
@@ -232,10 +256,14 @@ Node 的 ES 模块按 realpath 去重，因此通过锚点拿到的实例与 `ds
 ## 验证
 
 ```bash
-npm test            # 17 个单元 / 集成测试
+npm test            # 30 个单元 / 集成测试
 npm run verify      # 对真实网址做前后对照，打印 route 与 HTTP 状态码
 npm run verify -- https://example.com/
 ```
+
+测试覆盖：代理发现、宿主模块锚定解析、路由生命周期（含「慢探测不覆盖新配置」的代际保护）、
+surfaces（settings 命名空间注册、状态接口围栏与方法校验、设置改动实时重建路由）、
+以及真实 `HttpFetchProvider` 的前后对照集成测试。
 
 `npm run verify` 会在独立进程里跑真实的 `HttpFetchProvider`，安装前后各取一次，
 不改动正在运行的 DSH。
@@ -244,13 +272,15 @@ npm run verify -- https://example.com/
 
 ```
 dsh-web-fetch-proxy/
-├── lib/index.js          # cordis 宿主插件：配置、安装、自检、重试、生命周期
+├── lib/index.js          # cordis 宿主插件：apply / settings 命名空间 / 状态接口
+├── lib/manager.js        # 路由生命周期：安装、释放、代际保护、重试、状态
+├── lib/client.js         # 设置页（设置 → 常规 的「Web Fetch 代理」一栏）
 ├── lib/detect.js         # 代理发现（环境变量 / Clash 配置 / 系统代理 / 端口探测）
 ├── lib/harness.js        # 宿主模块的锚定解析与 launch environment 构造
 ├── scripts/verify.mjs    # 真实网络的前后对照验证脚本
-├── test/                 # node:test 测试
+├── test/                 # node:test 测试（detect / harness / manager / surfaces / integration）
 ├── cordis.patch.yml      # 插件注入声明
-└── package.json
+└── package.json          # 含 dsh.client 声明，宿主据此加载设置页
 ```
 
 ## 常见问题
@@ -270,6 +300,21 @@ A: 进程级策略会对所有出站 HTTP 生效，模型 API 的流量也会经
 
 A: 不会。插件只在探测到代理可连接时才安装路由；代理中途退出属于运行期变化，
 此时出站请求会失败，重启 DSH 或重新触发（插件会重试）即可恢复直连。
+
+**Q: 设置页里改了模式，需要重启吗？**
+
+A: 不需要。设置写的是 `applies: live` 的 settings 命名空间，宿主端 `scope.watch()` 收到后立即重建路由；
+状态行会在一两秒内刷新出新结果。重启只影响**插件本身更新**（例如升级版本后加载新的客户端代码）。
+
+**Q: 状态行一直显示「未找到可用的本地代理」？**
+
+A: 说明候选都没通过 TCP 探测。确认代理客户端在跑（Clash Verge 默认 mixed-port 7897），
+或在页面上切到「手动代理」直接填地址；也可以点「重新检测」强制重探一次。
+
+**Q: 设置页没有出现？**
+
+A: 页面要求宿主端注册了 `web-fetch-proxy` 这个 settings 命名空间，否则整行会隐藏。
+可能是 `@deepseek-ai/schemastery` 锚定解析失败（日志里会有提示），或插件没被加载。
 
 **Q: 支持 SOCKS 代理吗？**
 

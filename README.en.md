@@ -61,7 +61,35 @@ Restart DSH. A working boot logs:
 [web-fetch-proxy] web_fetch now tunnels through http://127.0.0.1:7897 (source: clash-config:...); the local DNS check is bypassed.
 ```
 
-## Configuration
+## Settings page
+
+After a restart, **Settings -> General** shows a "Web Fetch proxy" row:
+
+| Control | Effect |
+| --- | --- |
+| Auto-detect / Manual proxy / Off | Writes the `proxy` field of the `web-fetch-proxy` settings namespace; applies **live**, no restart |
+| Proxy URL input | Manual mode; accepts `http://127.0.0.1:7897` or `127.0.0.1:7897`. The host validates and rejects bad values before they are stored |
+| Bypass list | Appends `noProxy` entries; `localhost`, `127.0.0.1` and `::1` are always bypassed by dsh-http-proxy |
+| Status line / Re-detect | Reads the host's live status (current route, source, failure reason) and can re-run discovery on demand |
+
+The status line reports what the host actually did, for example:
+
+```
+Active  http://127.0.0.1:7897  (via: clash-config:...)
+```
+
+It reads a fenced, loopback-only endpoint, `POST /web-fetch-proxy/api`
+(`{"action":"status"}` to read, `{"action":"redetect"}` to re-run discovery).
+
+> There is no "restart to apply" step: the settings namespace is `applies: live`, and the host
+> rebuilds the route from `scope.watch()` - the previous policy is released first, then discovery
+> and installation run again with the new configuration.
+
+## Configuration (cordis layer)
+
+The page writes the same configuration. The `config` block in `cordis.patch.yml` supplies the
+deployment baseline and defaults (the settings `base` layer), and carries the fields the page
+does not expose:
 
 ```yaml
 - insert:
@@ -112,8 +140,9 @@ They do not conflict. Measured with both plugins mounted in one process:
 - Fail-open: no throw during module evaluation, none from `apply()`, and no route is installed unless
   the proxy is actually accepting connections.
 - An existing host route is never overridden.
-- Only `node:` builtins are imported statically; harness packages are loaded through guarded dynamic
-  imports, so a harness layout change can never stop the host from booting.
+- Only `node:` builtins are imported statically; harness packages are loaded through anchored,
+  guarded imports (async for the proxy runtime, synchronous for the settings schema), so a harness
+  layout change degrades the settings page instead of stopping the host from booting.
 - Installation is self-checked with `proxyRouteFor()` and rolled back when it did not take.
 
 ## Verify
@@ -122,6 +151,10 @@ They do not conflict. Measured with both plugins mounted in one process:
 npm test            # unit and integration tests
 npm run verify      # live before/after comparison against a real URL
 ```
+
+Coverage: proxy discovery, anchored host-module resolution, route lifecycle (including the
+"a slow discovery must not overwrite a newer configuration" generation guard), the settings and
+status surfaces, and a real `HttpFetchProvider` before/after integration test.
 
 `npm run verify` runs the real `HttpFetchProvider` in a separate process and never touches the
 running harness.

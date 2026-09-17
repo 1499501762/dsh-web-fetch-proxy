@@ -2,6 +2,23 @@
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的格式。
 
+## [0.2.0] - 2026-09-17
+
+### 新增
+
+- **配置页面**：注册 `web-fetch-proxy` settings 命名空间（`applies: live`），在
+  **设置 → 常规** 里提供「自动检测 / 手动代理 / 关闭」、代理地址、绕过列表与实时状态行，
+  改动立即生效，无需重启。
+- **状态接口**：`POST /web-fetch-proxy/api`，带同源围栏（仅接受 loopback / 受信 Host），
+  返回当前路由、来源与失败原因，并支持 `redetect` 重新探测。
+- **路由生命周期管理器**（`lib/manager.js`）：代际保护（慢探测不会覆盖更新的配置）、
+  可唤醒的重试等待、路由释放与状态快照。
+
+### 变更
+
+- 插件现在声明 `dsh.client`，宿主据此加载设置页（`exports["./client"]`）。
+- 宿主包解析新增同步入口 `requireHarnessModule`，用于在 cordis inject 回调内加载 settings schema。
+
 ## [0.1.0] - 2026-09-17
 
 ### 新增

@@ -1,13 +1,15 @@
 {
   "name": "dsh-web-fetch-proxy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DSH 插件：让内置 web_fetch 经由本地代理（Clash/Mihomo 等）出网，绕过 TUN fake-ip 假地址被 SSRF 防护拦截的问题。 / DSH plugin that routes the built-in web_fetch through a local proxy, so TUN fake-ip addresses stop tripping the SSRF guard.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./detect": "./lib/detect.js",
     "./harness": "./lib/harness.js",
+    "./manager": "./lib/manager.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -51,13 +53,17 @@
   "homepage": "https://github.com/1499501762/dsh-web-fetch-proxy#readme",
   "peerDependencies": {
     "@deepseek-ai/dsh-http-proxy": ">=0.1.5-rc.2",
-    "@deepseek-ai/dsh-launch-environment": ">=0.1.5-rc.2"
+    "@deepseek-ai/dsh-launch-environment": ">=0.1.5-rc.2",
+    "@deepseek-ai/schemastery": ">=3.18.2"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-http-proxy": {
       "optional": true
     },
     "@deepseek-ai/dsh-launch-environment": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
       "optional": true
     }
   },
@@ -66,6 +72,15 @@
     "displayName": "Web Fetch 代理",
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-store",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
     },
     "engines": {
       "dsh": ">=0.1.5-rc.1"
